@@ -273,15 +273,55 @@ function injectFacebookButtons() {
   }
 }
 
+// Purge injected UI elements if premium license is inactive or deactivated
+function removeInjectedButtons() {
+  try {
+    const injectedTikTokBtns = document.querySelectorAll(".adspy-tiktok-btn");
+    injectedTikTokBtns.forEach(btn => btn.remove());
+
+    const injectedFacebookBtns = document.querySelectorAll(".adspy-facebook-btn");
+    injectedFacebookBtns.forEach(btn => btn.remove());
+
+    // Reset injection tracking markers so they can be injected again on subsequent purchase/activation
+    const videos = document.querySelectorAll("video");
+    videos.forEach(videoEl => {
+      delete videoEl.dataset.adspyInjected;
+    });
+  } catch (err) {
+    console.error("Failed to remove injected buttons safely:", err);
+  }
+}
+
 // Global safe runner
 function runScanner() {
   try {
-    const host = window.location.host;
-    if (host.includes("tiktok.com")) {
-      injectTikTokButtons();
-    } else if (host.includes("facebook.com")) {
-      injectFacebookButtons();
+    if (!chrome.runtime || !chrome.runtime.id) {
+      // Content script context invalidated, stop periodic tasks
+      return;
     }
+
+    // Retrieve active license state before showing/injecting UI features
+    chrome.storage.local.get("isPremium", (result) => {
+      if (chrome.runtime.lastError) {
+        console.warn("Could not query license state from extension storage:", chrome.runtime.lastError.message);
+        return;
+      }
+
+      const isPremium = !!result.isPremium;
+      if (!isPremium) {
+        // If premium is deactivated or false, remove existing buttons immediately
+        removeInjectedButtons();
+        return;
+      }
+
+      // Check current host URL and execute platform-specific UI button injectors
+      const host = window.location.host;
+      if (host.includes("tiktok.com")) {
+        injectTikTokButtons();
+      } else if (host.includes("facebook.com")) {
+        injectFacebookButtons();
+      }
+    });
   } catch (err) {
     console.error("Global scanner failed safely:", err);
   }

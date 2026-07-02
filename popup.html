@@ -18,38 +18,61 @@
 
     <!-- Main Content Panel -->
     <main>
-      <!-- Premium Verification Form -->
-      <section class="card verification-card">
-        <h2>License Activation</h2>
-        <p class="description">Enter your Lemon Squeezy license key to activate unlimited ad copying and high quality video downloading.</p>
-        
-        <div class="input-group">
-          <input type="text" id="license-input" placeholder="Enter license key (e.g. LS-XXXX...)" autocomplete="off">
-          <button id="activate-btn">Activate Premium</button>
-        </div>
-        
-        <div id="status-message" class="status-box hidden"></div>
-      </section>
+      <!-- Gated View 1: Activation Screen (isPremium is false) -->
+      <div id="activation-view" class="hidden">
+        <section class="card verification-card">
+          <h2>License Activation</h2>
+          <p class="description">Enter your Lemon Squeezy license key to activate unlimited ad copying and high quality video downloading.</p>
+          
+          <div class="input-group">
+            <input type="text" id="license-input" placeholder="Enter license key (e.g. LS-XXXX...)" autocomplete="off">
+            <button id="activate-btn">Activate Premium</button>
+          </div>
+          
+          <div id="status-message" class="status-box hidden"></div>
+        </section>
 
-      <!-- Usage Analytics Card -->
-      <section class="card usage-card">
-        <h2>Usage Statistics</h2>
-        <div class="stats-row">
-          <div class="stat-box">
-            <span class="stat-label">Trial Downloads</span>
-            <span id="download-count" class="stat-value">0 / 3</span>
+        <section class="card promo-card">
+          <div class="promo-box">
+            <p>🌟 Upgrade to unlock full unlimited downloads, direct MP4 scraping, and VIP support!</p>
+            <a href="https://granit-software.lemonsqueezy.com/products" target="_blank" class="buy-link">Get License Key</a>
           </div>
-          <div class="stat-box">
-            <span class="stat-label">Platform Targeting</span>
-            <span class="stat-value active-val">Active</span>
+        </section>
+      </div>
+
+      <!-- Gated View 2: Dashboard UI (isPremium is true) -->
+      <div id="dashboard-view" class="hidden">
+        <section class="card welcome-card">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px; filter: drop-shadow(0 0 4px var(--accent-cyan));">⭐</span>
+            <h2 style="color: var(--accent-cyan); text-shadow: 0 0 8px rgba(0,242,254,0.3);">Premium Unlocked</h2>
           </div>
-        </div>
-        
-        <div id="upgrade-promo" class="promo-box">
-          <p>🌟 Upgrade to unlock full unlimited downloads & VIP support!</p>
-          <a href="https://lemonsqueezy.com" target="_blank" class="buy-link">Get License Key</a>
-        </div>
-      </section>
+          <p class="description">The extension is running and injecting "🚀 Copy with AI" buttons directly on TikTok and Facebook Ads Library.</p>
+        </section>
+
+        <!-- Usage Analytics Card -->
+        <section class="card usage-card">
+          <h2>Usage Statistics</h2>
+          <div class="stats-row">
+            <div class="stat-box">
+              <span class="stat-label">Downloads</span>
+              <span class="stat-value active-val">Unlimited</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Platform targeting</span>
+              <span class="stat-value active-val">Active</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quick actions / Deactivation -->
+        <section class="card actions-card">
+          <h2>License Management</h2>
+          <div class="input-group">
+            <button id="deactivate-btn" style="background: linear-gradient(135deg, var(--danger-red) 0%, #cc0033 100%); color: white; box-shadow: 0 4px 12px rgba(255, 51, 102, 0.25);">Deactivate License</button>
+          </div>
+        </section>
+      </div>
     </main>
 
     <!-- Footer Area -->
