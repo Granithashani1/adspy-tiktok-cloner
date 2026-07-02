@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "AdSpy & Funnel Cloner",
+  "version": "1.0.0",
+  "description": "Instantly clone high-converting TikTok and Facebook Ads. Extract raw videos and ad copy in one click with built-in license verification.",
+  "permissions": [
+    "storage",
+    "downloads",
+    "activeTab",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "*://*.tiktok.com/*",
+    "*://*.ads.tiktok.com/*",
+    "*://*.tiktokcdn.com/*",
+    "*://*.byteoversea.com/*",
+    "*://*.ibyteimg.com/*",
+    "*://*.facebook.com/*",
+    "*://*.fbcdn.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.tiktok.com/*",
+        "*://*.ads.tiktok.com/*",
+        "*://*.facebook.com/ads/library/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
