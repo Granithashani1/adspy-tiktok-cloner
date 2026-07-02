@@ -57,6 +57,38 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Bulk Download of Viral Videos click handler
+  const bulkSearchInput = document.getElementById("bulk-search-input");
+  const bulkDownloadBtn = document.getElementById("bulk-download-btn");
+  const bulkStatus = document.getElementById("bulk-status");
+
+  if (bulkDownloadBtn) {
+    bulkDownloadBtn.addEventListener("click", () => {
+      const query = bulkSearchInput.value.trim();
+      if (!query) {
+        showBulkStatus("Please enter a product name.", "error");
+        return;
+      }
+
+      const spin = document.getElementById("variate-spin")?.checked ? "true" : "false";
+      const edge = document.getElementById("variate-edge")?.checked ? "true" : "false";
+
+      showBulkStatus("Opening TikTok scanner in a new tab...", "success");
+
+      // Open a new TikTok search tab with bulk_download and AI variation instructions
+      const searchUrl = `https://www.tiktok.com/search?q=${encodeURIComponent(query)}#bulk_download=true&spin=${spin}&edge=${edge}`;
+      chrome.tabs.create({ url: searchUrl, active: true });
+    });
+  }
+
+  function showBulkStatus(text, type) {
+    if (bulkStatus) {
+      bulkStatus.textContent = text;
+      bulkStatus.className = `status-box ${type}`;
+      bulkStatus.classList.remove("hidden");
+    }
+  }
+
   // Query chrome local storage and render updated tier configurations
   function updatePopupState() {
     chrome.storage.local.get(["isPremium", "licenseKey"], (result) => {

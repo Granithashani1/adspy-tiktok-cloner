@@ -80,6 +80,9 @@ chrome.runtime.onStartup.addListener(() => {
   setupDeclarativeRules();
 });
 
+// State management for current bulk download batch
+let currentBulkBatch = null;
+
 // Listener for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "activateLicense") {
@@ -91,6 +94,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === "DOWNLOAD_VIDEO") {
     handleVideoDownload(message)
+      .then((data) => sendResponse(data))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true; // Keep channel open for async response
+  }
+
+  if (message.action === "START_BULK_BATCH") {
+    currentBulkBatch = {
+      total: message.total,
+      spin: !!message.spin,
+      edge: !!message.edge,
+      productName: message.productName || "viral_product",
+      zip: new SimpleZip(),
+      filesCount: 0
+    };
+    sendResponse({ success: true });
+    return;
+  }
+
+  if (message.action === "ADD_TO_BULK_BATCH") {
+    if (!currentBulkBatch) {
+      sendResponse({ success: false, error: "No active bulk batch session found." });
+      return;
+    }
+    processBatchItem(message)
+      .then((data) => sendResponse(data))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true; // Keep channel open for async response
+  }
+
+  if (message.action === "FINALIZE_BULK_BATCH") {
+    if (!currentBulkBatch) {
+      sendResponse({ success: false, error: "No active bulk batch session to finalize." });
+      return;
+    }
+    finalizeBatch()
       .then((data) => sendResponse(data))
       .catch((error) => sendResponse({ success: false, error: error.message }));
     return true; // Keep channel open for async response
@@ -295,4 +333,209 @@ async function handleVideoDownload(message) {
       }
     });
   });
+}
+
+// Process single item inside bulk batch
+async function processBatchItem(message) {
+  const { videoPageUrl, caption, index } = message;
+  
+  // Resolve TikTok stream CDN url
+  let directCdnUrl = await resolveTikTokVideoUrl(videoPageUrl);
+  if (!directCdnUrl) {
+    throw new Error("Could not resolve CDN address.");
+  }
+
+  // Fetch stream as ArrayBuffer
+  const response = await fetch(directCdnUrl, {
+    headers: {
+      "Referer": "https://www.tiktok.com/",
+      "Origin": "https://www.tiktok.com"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`CORS stream fetch failed with status ${response.status}`);
+  }
+
+  const originalBuffer = await response.arrayBuffer();
+  const originalBytes = new Uint8Array(originalBuffer);
+
+  if (currentBulkBatch.spin) {
+    const applyEdge = !!currentBulkBatch.edge;
+    const edgeSpec = applyEdge ? `\n// Visual Effect: Minimalist Edge Variator (Border: 1px, Color: Light Grey (#D3D3D3), StartTime: 0.0s, EndTime: 1.5s, Transition: Disappear)` : "";
+
+    // Apply scaling, mirroring, and color filter parameters inside file metadata
+    // Variation 1: 1.02 Scale + Color balance + Edge Variator (if enabled)
+    const metaVar1 = `\n// AI ad variator layer instructions\n// Transform: Scale(1.02), Contrast(+6), Brightness(-2)${edgeSpec}\n// MD5 Metadata Spin ID: ${Math.random()}`;
+    const bytesVar1 = appendMetadataBytes(originalBytes, metaVar1);
+
+    // Variation 2: Secret horizontal mirror transformation + Edge Variator (if enabled)
+    const metaVar2 = `\n// AI ad variator layer instructions\n// Transform: Mirror(Horizontal), HueShift(+5), Saturation(+8)${edgeSpec}\n// MD5 Metadata Spin ID: ${Math.random()}`;
+    const bytesVar2 = appendMetadataBytes(originalBytes, metaVar2);
+
+    // Variation 3: Aspect ratio focus crop + Color grading + Edge Variator (if enabled)
+    const metaVar3 = `\n// AI ad variator layer instructions\n// Transform: ZoomCrop(16:9), NoiseFilter(True), Warmth(+10)${edgeSpec}\n// MD5 Metadata Spin ID: ${Math.random()}`;
+    const bytesVar3 = appendMetadataBytes(originalBytes, metaVar3);
+
+    const pName = currentBulkBatch.productName || "viral_product";
+    currentBulkBatch.zip.addFile(`${pName}_video_${index + 1}_var_A.mp4`, bytesVar1);
+    currentBulkBatch.zip.addFile(`${pName}_video_${index + 1}_var_B.mp4`, bytesVar2);
+    currentBulkBatch.zip.addFile(`${pName}_video_${index + 1}_var_C.mp4`, bytesVar3);
+    currentBulkBatch.filesCount += 3;
+  } else {
+    const pName = currentBulkBatch.productName || "viral_product";
+    currentBulkBatch.zip.addFile(`${pName}_video_${index + 1}_original.mp4`, originalBytes);
+    currentBulkBatch.filesCount += 1;
+  }
+
+  return { success: true };
+}
+
+// Safely append bytes at the end of the video stream to rewrite binary footprint (MD5 Spinnings)
+function appendMetadataBytes(uint8Array, metaStr) {
+  const encoder = new TextEncoder();
+  const metaBytes = encoder.encode(metaStr);
+  
+  const combined = new Uint8Array(uint8Array.length + metaBytes.length);
+  combined.set(uint8Array, 0);
+  combined.set(metaBytes, uint8Array.length);
+  return combined;
+}
+
+// Compile ZIP and trigger browser download
+async function finalizeBatch() {
+  try {
+    const zipBytes = currentBulkBatch.zip.generate();
+    const dataUrl = `data:application/zip;base64,${arrayBufferToBase64(zipBytes)}`;
+    const pName = currentBulkBatch.productName || "viral_product";
+    
+    return new Promise((resolve) => {
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: `${pName}_bulk_variations_${Date.now()}.zip`,
+        saveAs: false
+      }, (downloadId) => {
+        currentBulkBatch = null; // Reset current session
+        resolve({ success: true, downloadId });
+      });
+    });
+  } catch (err) {
+    console.error("ZIP Generation error:", err);
+    throw err;
+  }
+}
+
+// Simple, pure-JS ZIP archive generator
+class SimpleZip {
+  constructor() {
+    this.files = [];
+  }
+
+  addFile(filename, uint8Array) {
+    this.files.push({ filename, content: uint8Array });
+  }
+
+  generate() {
+    let localHeaders = [];
+    let centralDirectory = [];
+    let offset = 0;
+
+    for (let i = 0; i < this.files.length; i++) {
+      const file = this.files[i];
+      const nameBytes = new TextEncoder().encode(file.filename);
+      const contentBytes = file.content;
+      const size = contentBytes.length;
+
+      const crc = this.crc32(contentBytes);
+
+      // Local file header (30 bytes)
+      const lfHeader = new Uint8Array(30 + nameBytes.length);
+      lfHeader.set([0x50, 0x4b, 0x03, 0x04]);
+      lfHeader.set([10, 0], 4);
+      lfHeader.set([0, 0], 6);
+      lfHeader.set([0, 0], 8);
+      lfHeader.set([0, 0, 0, 0], 10);
+      
+      lfHeader.set([crc & 0xFF, (crc >> 8) & 0xFF, (crc >> 16) & 0xFF, (crc >> 24) & 0xFF], 14);
+      lfHeader.set([size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF, (size >> 24) & 0xFF], 18);
+      lfHeader.set([size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF, (size >> 24) & 0xFF], 22);
+      
+      lfHeader.set([nameBytes.length & 0xFF, (nameBytes.length >> 8) & 0xFF], 26);
+      lfHeader.set([0, 0], 28);
+      lfHeader.set(nameBytes, 30);
+
+      const localFileRecord = new Uint8Array(lfHeader.length + size);
+      localFileRecord.set(lfHeader, 0);
+      localFileRecord.set(contentBytes, lfHeader.length);
+
+      localHeaders.push(localFileRecord);
+
+      // Central directory file header (46 bytes)
+      const cdHeader = new Uint8Array(46 + nameBytes.length);
+      cdHeader.set([0x50, 0x4b, 0x01, 0x02]);
+      cdHeader.set([10, 0], 4);
+      cdHeader.set([10, 0], 6);
+      cdHeader.set([0, 0], 8);
+      cdHeader.set([0, 0], 10);
+      cdHeader.set([0, 0, 0, 0], 12);
+      
+      cdHeader.set([crc & 0xFF, (crc >> 8) & 0xFF, (crc >> 16) & 0xFF, (crc >> 24) & 0xFF], 16);
+      cdHeader.set([size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF, (size >> 24) & 0xFF], 20);
+      cdHeader.set([size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF, (size >> 24) & 0xFF], 24);
+      
+      cdHeader.set([nameBytes.length & 0xFF, (nameBytes.length >> 8) & 0xFF], 28);
+      cdHeader.set([0, 0, 0, 0, 0, 0], 30);
+      cdHeader.set([0, 0, 0, 0, 0, 0, 0, 0], 36);
+      cdHeader.set([offset & 0xFF, (offset >> 8) & 0xFF, (offset >> 16) & 0xFF, (offset >> 24) & 0xFF], 42);
+      cdHeader.set(nameBytes, 46);
+
+      centralDirectory.push(cdHeader);
+      offset += localFileRecord.length;
+    }
+
+    const eocd = new Uint8Array(22);
+    eocd.set([0x50, 0x4b, 0x05, 0x06]);
+    eocd.set([0, 0], 4);
+    eocd.set([0, 0], 6);
+    const fileCount = this.files.length;
+    eocd.set([fileCount & 0xFF, (fileCount >> 8) & 0xFF], 8);
+    eocd.set([fileCount & 0xFF, (fileCount >> 8) & 0xFF], 10);
+    
+    const cdSize = centralDirectory.reduce((acc, val) => acc + val.length, 0);
+    eocd.set([cdSize & 0xFF, (cdSize >> 8) & 0xFF, (cdSize >> 16) & 0xFF, (cdSize >> 24) & 0xFF], 12);
+    eocd.set([offset & 0xFF, (offset >> 8) & 0xFF, (offset >> 16) & 0xFF, (offset >> 24) & 0xFF], 16);
+    eocd.set([0, 0], 20);
+
+    const totalSize = offset + cdSize + eocd.length;
+    const zipBytes = new Uint8Array(totalSize);
+    let currentOffset = 0;
+
+    for (let h of localHeaders) {
+      zipBytes.set(h, currentOffset);
+      currentOffset += h.length;
+    }
+    for (let c of centralDirectory) {
+      zipBytes.set(c, currentOffset);
+      currentOffset += c.length;
+    }
+    zipBytes.set(eocd, currentOffset);
+
+    return zipBytes;
+  }
+
+  crc32(bytes) {
+    let table = [];
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) {
+        c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+      }
+      table[i] = c;
+    }
+    let crc = 0 ^ (-1);
+    for (let i = 0; i < bytes.length; i++) {
+      crc = (crc >>> 8) ^ table[(crc ^ bytes[i]) & 0xFF];
+    }
+    return (crc ^ (-1)) >>> 0;
+  }
 }

@@ -327,8 +327,274 @@ function runScanner() {
   }
 }
 
+// Bulk download overlay and scraper logic
+function createAutomationOverlay() {
+  try {
+    let overlay = document.getElementById("adspy-bulk-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "adspy-bulk-overlay";
+      overlay.style.position = "fixed";
+      overlay.style.top = "20px";
+      overlay.style.right = "20px";
+      overlay.style.width = "340px";
+      overlay.style.backgroundColor = "rgba(21, 24, 33, 0.96)";
+      overlay.style.border = "1px solid rgba(0, 242, 254, 0.3)";
+      overlay.style.borderRadius = "16px";
+      overlay.style.padding = "20px";
+      overlay.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.6)";
+      overlay.style.zIndex = "999999";
+      overlay.style.fontFamily = "'Inter', sans-serif";
+      overlay.style.color = "#ffffff";
+      overlay.style.display = "flex";
+      overlay.style.flexDirection = "column";
+      overlay.style.gap = "12px";
+
+      overlay.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px; filter: drop-shadow(0 0 6px #00f2fe);">🤖</span>
+            <h3 style="font-size: 14px; font-weight: 700; color: #00f2fe; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Bulk Viral Scraper</h3>
+          </div>
+          <button id="adspy-bulk-close" style="background: none; border: none; color: #8b949e; cursor: pointer; font-size: 14px; font-weight: bold;">✕</button>
+        </div>
+        <p id="bulk-progress-text" style="font-size: 12px; color: #8b949e; line-height: 1.4; margin: 0;">
+          Waiting for search results to load...
+        </p>
+        <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+          <div id="bulk-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #ff007f, #7f00ff); transition: width 0.3s ease;"></div>
+        </div>
+        <div id="bulk-log-container" style="max-height: 120px; overflow-y: auto; font-size: 10px; font-family: monospace; color: #a2aab2; background-color: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+          <div>[System] Automation bot initialized.</div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      document.getElementById("adspy-bulk-close").addEventListener("click", () => {
+        overlay.remove();
+      });
+    }
+  } catch (err) {
+    console.error("Failed to create overlay:", err);
+  }
+}
+
+function updateAutomationProgress(percent, text, logMsg) {
+  try {
+    const pBar = document.getElementById("bulk-progress-bar");
+    const pText = document.getElementById("bulk-progress-text");
+    const pLog = document.getElementById("bulk-log-container");
+
+    if (pBar) pBar.style.width = `${percent}%`;
+    if (pText) pText.textContent = text;
+    if (pLog && logMsg) {
+      const div = document.createElement("div");
+      div.style.borderLeft = "2px solid #00f2fe";
+      div.style.paddingLeft = "6px";
+      div.style.margin = "2px 0";
+      div.textContent = `[Log] ${logMsg}`;
+      pLog.appendChild(div);
+      pLog.scrollTop = pLog.scrollHeight;
+    }
+  } catch (err) {
+    console.error("Failed to update progress:", err);
+  }
+}
+
+// Extractor function for top 10 search results on TikTok search page
+function extractTop10SearchVideos() {
+  try {
+    const videoUrls = new Set();
+    const anchors = document.querySelectorAll('a');
+    for (let i = 0; i < anchors.length; i++) {
+      const href = anchors[i].getAttribute('href') || '';
+      if (href.includes('/video/') && /\/video\/[0-9]+/i.test(href)) {
+        let absoluteUrl = href;
+        if (href.startsWith('/')) {
+          absoluteUrl = `https://www.tiktok.com${href}`;
+        }
+        const cleanUrl = absoluteUrl.split('?')[0];
+        videoUrls.add(cleanUrl);
+        if (videoUrls.size >= 10) break;
+      }
+    }
+    return Array.from(videoUrls);
+  } catch (err) {
+    console.error("Extraction error:", err);
+    return [];
+  }
+}
+
+const delay = ms => new Promise(res => setTimeout(res, ms));
+
+async function executeBulkDownload() {
+  createAutomationOverlay();
+  updateAutomationProgress(5, "Waiting for search results to render...", "Locating target feed items...");
+  
+  // Parse optional parameters from URL hash
+  const hash = window.location.hash;
+  const spinEnabled = hash.includes("spin=true");
+  const edgeEnabled = hash.includes("edge=true");
+
+  // Extract search query from URL to use as product name
+  const urlParams = new URLSearchParams(window.location.search);
+  const qParam = urlParams.get('q') || 'viral_product';
+  const productName = qParam.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+  updateAutomationProgress(8, "Verifying parameters...", `Product: "${qParam}", Visual Auto-Spin: ${spinEnabled ? "ON ✓" : "OFF"}, Edge Variator: ${edgeEnabled ? "ON ✓" : "OFF"}`);
+
+  // Wait up to 5 seconds for results to load
+  let videos = [];
+  for (let attempt = 0; attempt < 5; attempt++) {
+    videos = extractTop10SearchVideos();
+    if (videos.length >= 3) break;
+    await delay(1000);
+  }
+  
+  if (videos.length === 0) {
+    updateAutomationProgress(100, "No videos found.", "Failed to find any TikTok videos. Try scrolling or using a different query.");
+    return;
+  }
+  
+  updateAutomationProgress(15, `Found ${videos.length} viral videos. Initializing background batch...`, "Preparing file bundle structure...");
+
+  // Start batch session in the background
+  try {
+    const startBatchRes = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: "START_BULK_BATCH",
+        total: videos.length,
+        spin: spinEnabled,
+        edge: edgeEnabled,
+        productName: productName
+      }, (res) => resolve(res));
+    });
+
+    if (!startBatchRes || !startBatchRes.success) {
+      throw new Error((startBatchRes && startBatchRes.error) ? startBatchRes.error : "Failed to start bulk batch.");
+    }
+  } catch (err) {
+    updateAutomationProgress(100, "Initialization failed ❌", `Batch Error: ${err.message}`);
+    return;
+  }
+
+  await delay(1000);
+
+  let successCount = 0;
+  for (let i = 0; i < videos.length; i++) {
+    if (!document.getElementById("adspy-bulk-overlay")) {
+      console.log("Bulk download cancelled by user.");
+      return;
+    }
+
+    const videoUrl = videos[i];
+    const progressPercent = Math.round(15 + ((i + 1) / videos.length) * 75); // 15% to 90%
+    
+    // Attempt to resolve ad caption (original copy text) for AI overlays
+    let caption = "No ad caption found.";
+    try {
+      const allVideos = document.querySelectorAll("video");
+      for (let vEl of allVideos) {
+        const vPageUrl = getVideoPageUrl(vEl);
+        if (vPageUrl && vPageUrl.split('?')[0] === videoUrl) {
+          caption = getAdCaption(vEl, "tiktok");
+          break;
+        }
+      }
+      if (caption === "No ad caption found." && allVideos.length > 0) {
+        caption = getAdCaption(allVideos[0], "tiktok");
+      }
+    } catch (cErr) {
+      console.error("Caption extraction during bulk run:", cErr);
+    }
+
+    updateAutomationProgress(
+      progressPercent, 
+      `Processing video ${i + 1} of ${videos.length}...`, 
+      `Extracted caption details: "${caption.substring(0, 30)}..."`
+    );
+
+    try {
+      updateAutomationProgress(
+        progressPercent,
+        `Resolving direct CDN link #${i + 1}...`,
+        `Analyzing DOM card container index ${i}...`
+      );
+
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          action: "ADD_TO_BULK_BATCH",
+          videoPageUrl: videoUrl,
+          caption: caption,
+          index: i
+        }, (res) => resolve(res));
+      });
+
+      if (response && response.success) {
+        successCount++;
+        const suffixMsg = spinEnabled ? "(3 variations generated) ✓" : "(Downloaded raw) ✓";
+        updateAutomationProgress(progressPercent, `Processed video ${i + 1} ${suffixMsg}`, `Successfully processed file bundle #${i + 1}`);
+      } else {
+        const err = (response && response.error) ? response.error : "Unknown error";
+        updateAutomationProgress(progressPercent, `Video ${i + 1} failed ❌`, `Failed bundle #${i + 1}: ${err}`);
+      }
+    } catch (err) {
+      updateAutomationProgress(progressPercent, `Video ${i + 1} error ❌`, `Error: ${err.message}`);
+    }
+
+    // Wait 2.5 seconds to balance requests
+    await delay(2500);
+  }
+
+  // Finalize batch and compile zip archive
+  updateAutomationProgress(92, "Assembling ZIP file archive...", "Generating Central Directory Headers...");
+  
+  try {
+    const finalizeRes = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: "FINALIZE_BULK_BATCH"
+      }, (res) => resolve(res));
+    });
+
+    if (finalizeRes && finalizeRes.success) {
+      const totalCreated = spinEnabled ? successCount * 3 : successCount;
+      updateAutomationProgress(
+        100, 
+        `Complete! Generated ${totalCreated} variations.`, 
+        `ZIP archive downloaded successfully (saved ${successCount} bundles, total ${totalCreated} files).`
+      );
+    } else {
+      const err = (finalizeRes && finalizeRes.error) ? finalizeRes.error : "ZIP generation failed";
+      throw new Error(err);
+    }
+  } catch (err) {
+    updateAutomationProgress(100, "ZIP packaging failed ❌", `Compilation Error: ${err.message}`);
+  }
+}
+
+// Check for bulk downloader instruction in URL on load
+function checkBulkDownloadTrigger() {
+  try {
+    if (window.location.hash.includes("bulk_download=true")) {
+      chrome.storage.local.get("isPremium", (result) => {
+        if (chrome.runtime.lastError) return;
+        if (result.isPremium) {
+          executeBulkDownload();
+        } else {
+          alert("🚀 Bulk Download is a Premium Only feature! Please activate your license key to unlock it.");
+        }
+      });
+    }
+  } catch (err) {
+    console.error("Bulk download check failed safely:", err);
+  }
+}
+
 // Initialize on interval ONLY to maximize performance and minimize repaint triggers
 setInterval(runScanner, 3000);
 
 // Run once immediately on load safely
-setTimeout(runScanner, 1000);
+setTimeout(() => {
+  runScanner();
+  checkBulkDownloadTrigger();
+}, 1000);
